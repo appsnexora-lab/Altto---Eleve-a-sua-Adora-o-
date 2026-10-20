@@ -1,0 +1,6 @@
+{
+  "name": "ALTTO",
+  "description": "Aplicativo pessoal de leitura cristã com áreas exclusivas para Bíblia, Devocional e Biblioteca, controle diário de leitura e leitor profissional.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

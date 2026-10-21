@@ -48,8 +48,17 @@ export async function markBookAsCurrentlyReading(bookId: string): Promise<Book |
       book.updatedAt = now;
       await updateBook(book);
       try {
-        localStorage.setItem('altto_last_read_book_id', bookId);
-        window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId } }));
+        const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+        const curDevId = localStorage.getItem('altto_devotional_book_id');
+        const isBibleOrDev =
+          bookId === curBibleId ||
+          bookId === curDevId ||
+          (book.title && (book.title.toLowerCase().includes('bíblia') || book.title.toLowerCase().includes('biblia') || book.title.toLowerCase().includes('devocional')));
+
+        if (!isBibleOrDev) {
+          localStorage.setItem('altto_last_read_book_id', bookId);
+          window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId } }));
+        }
       } catch {}
       return book;
     }

@@ -29,6 +29,8 @@ interface DevotionalViewProps {
     bookData?: Book;
     initialChapterOrDay?: number;
     devotionalDays?: any[];
+    isDevotional?: boolean;
+    isReadAlready?: boolean;
   }) => void;
   selectedDateStr?: string;
   onDateChange?: (date: string) => void;
@@ -249,7 +251,7 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
   }
 
   return (
-    <div id="devotional-view-container" className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-7 text-[#292532] bg-[#FFFFFF] min-h-screen">
+    <div id="devotional-view-container" className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 text-[#292532] bg-[#FFFFFF] min-h-screen overflow-x-hidden w-full">
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-[#EEEAF5] pb-5 flex-wrap gap-4">
         <div className="space-y-1">
@@ -298,6 +300,7 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
                   title: selectedBook.title,
                   subtitle: selectedBook.author,
                   bookData: selectedBook,
+                  isDevotional: true,
                 })
               }
               className="w-24 sm:w-28 aspect-[2/3] rounded-xl overflow-hidden bg-[#FBF9FF] border border-[#EEEAF5] shadow-xs shrink-0 cursor-pointer group hover:border-[#B6A2DB] transition-all"
@@ -359,6 +362,7 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
                       title: selectedBook.title,
                       subtitle: selectedBook.author,
                       bookData: selectedBook,
+                      isDevotional: true,
                     })
                   }
                   className="px-4 py-2 rounded-xl bg-[#77619E] text-white font-medium text-xs hover:bg-[#68538D] transition-colors shadow-xs flex items-center gap-2 cursor-pointer"

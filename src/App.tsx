@@ -33,6 +33,8 @@ interface ReaderState {
   bookData?: Book;
   isReadAlready?: boolean;
   period?: 'morning' | 'afternoon' | 'night';
+  isBible?: boolean;
+  isDevotional?: boolean;
 }
 
 export default function App() {
@@ -84,7 +86,21 @@ export default function App() {
   }, []);
 
   const handleOpenReader = (params: any) => {
-    if (params.contentType === 'book' && params.contentId) {
+    // Check if this content is the selected Bible or selected Devotional
+    const selectedBibleId = localStorage.getItem('altto_selected_bible_book_id');
+    const selectedDevId = localStorage.getItem('altto_devotional_book_id');
+    const isExcludedFromContinuarLendo =
+      params.contentType === 'bible' ||
+      params.contentType === 'devotional' ||
+      Boolean(params.period) ||
+      Boolean(params.isBible) ||
+      Boolean(params.isDevotional) ||
+      (selectedBibleId && (params.contentId === selectedBibleId || params.bookData?.id === selectedBibleId)) ||
+      (selectedDevId && (params.contentId === selectedDevId || params.bookData?.id === selectedDevId)) ||
+      (params.title && (params.title.toLowerCase().includes('bíblia') || params.title.toLowerCase().includes('biblia') || params.title.toLowerCase().includes('devocional'))) ||
+      (params.bookData?.title && (params.bookData.title.toLowerCase().includes('bíblia') || params.bookData.title.toLowerCase().includes('biblia') || params.bookData.title.toLowerCase().includes('devocional')));
+
+    if (params.contentType === 'book' && params.contentId && !isExcludedFromContinuarLendo) {
       try {
         localStorage.setItem('altto_last_read_book_id', params.contentId);
         window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: params.contentId } }));
@@ -109,6 +125,8 @@ export default function App() {
       bookData: params.bookData,
       isReadAlready: params.isReadAlready || false,
       period: params.period,
+      isBible: Boolean(params.isBible || params.contentType === 'bible' || Boolean(params.period)),
+      isDevotional: Boolean(params.isDevotional || params.contentType === 'devotional'),
     });
   };
 
@@ -173,7 +191,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FFFFFF] text-[#292532] selection:bg-[#F5F0FF] selection:text-[#77619E] font-sans antialiased pb-20 md:pb-6">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-[#FFFFFF] text-[#292532] selection:bg-[#F5F0FF] selection:text-[#77619E] font-sans antialiased pb-20 md:pb-6">
       {/* Top Bar */}
       <TopBar
         activeTab={activeTab}
@@ -181,8 +199,8 @@ export default function App() {
         isOffline={isOffline}
       />
 
-      {/* Main Views with Strict Domain Separation */}
-      <main className="flex-1 w-full animate-in fade-in duration-200">
+      {/* Main Views with Strict Domain Separation and Zero Horizontal Scroll */}
+      <main className="flex-1 w-full max-w-full overflow-x-hidden animate-in fade-in duration-200">
         {activeTab === 'home' && (
           <HomeView
             onNavigateTab={(tab) => {
@@ -228,6 +246,8 @@ export default function App() {
           bibleBooks={readerState.bibleBooks}
           devotionalDays={readerState.devotionalDays}
           bookData={readerState.bookData}
+          isBible={readerState.isBible}
+          isDevotional={readerState.isDevotional}
           onClose={() => setReaderState(prev => ({ ...prev, isOpen: false }))}
           onMarkAsRead={handleMarkAsReadFromReader}
           isReadAlready={readerState.isReadAlready}

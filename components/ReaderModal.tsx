@@ -51,6 +51,8 @@ interface ReaderProps {
   bibleBooks?: BibleBook[];
   devotionalDays?: DevotionalDay[];
   bookData?: Book;
+  isBible?: boolean;
+  isDevotional?: boolean;
   onClose: () => void;
   onMarkAsRead?: (itemDetails: {
     bookName?: string;
@@ -73,6 +75,8 @@ export const ReaderModal: React.FC<ReaderProps> = ({
   bibleBooks: _bibleBooks = [],
   devotionalDays = [],
   bookData,
+  isBible,
+  isDevotional,
   onClose,
   onMarkAsRead,
   isReadAlready = false,
@@ -204,7 +208,19 @@ export const ReaderModal: React.FC<ReaderProps> = ({
           }, 150);
         }
       }
-      if (contentType === 'book' && contentId) {
+      const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+      const curDevId = localStorage.getItem('altto_devotional_book_id');
+      const isBibleOrDev =
+        contentType === 'bible' ||
+        contentType === 'devotional' ||
+        Boolean(isBible) ||
+        Boolean(isDevotional) ||
+        (curBibleId && (contentId === curBibleId || bookData?.id === curBibleId)) ||
+        (curDevId && (contentId === curDevId || bookData?.id === curDevId)) ||
+        (bookData && (bookData.title.toLowerCase().includes('bíblia') || bookData.title.toLowerCase().includes('biblia') || bookData.title.toLowerCase().includes('devocional'))) ||
+        (title && (title.toLowerCase().includes('bíblia') || title.toLowerCase().includes('biblia') || title.toLowerCase().includes('devocional')));
+
+      if (contentType === 'book' && contentId && !isBibleOrDev) {
         try {
           localStorage.setItem('altto_last_read_book_id', contentId);
           window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: contentId } }));
@@ -261,7 +277,19 @@ export const ReaderModal: React.FC<ReaderProps> = ({
       zoomLevel,
       contentType === 'bible' ? currentChapter : currentDayNumber
     );
-    if (contentType === 'book' && contentId) {
+    const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+    const curDevId = localStorage.getItem('altto_devotional_book_id');
+    const isBibleOrDev =
+      contentType === 'bible' ||
+      contentType === 'devotional' ||
+      Boolean(isBible) ||
+      Boolean(isDevotional) ||
+      (curBibleId && (contentId === curBibleId || bookData?.id === curBibleId)) ||
+      (curDevId && (contentId === curDevId || bookData?.id === curDevId)) ||
+      (bookData && (bookData.title.toLowerCase().includes('bíblia') || bookData.title.toLowerCase().includes('biblia') || bookData.title.toLowerCase().includes('devocional'))) ||
+      (title && (title.toLowerCase().includes('bíblia') || title.toLowerCase().includes('biblia') || title.toLowerCase().includes('devocional')));
+
+    if (contentType === 'book' && contentId && !isBibleOrDev) {
       try {
         localStorage.setItem('altto_last_read_book_id', contentId);
         window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: contentId, percentage } }));

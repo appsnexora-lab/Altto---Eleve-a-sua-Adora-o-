@@ -216,8 +216,8 @@ export const ProfileView: React.FC = () => {
         </div>
       )}
 
-      {/* Sub tabs */}
-      <div className="flex items-center gap-1.5 border-b border-[#EEEAF5] pb-2 overflow-x-auto text-xs no-scrollbar">
+      {/* Sub tabs — Sem rolagem lateral, totalmente compacto */}
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 border-b border-[#EEEAF5] pb-2 text-xs">
         <button
           id="profile-tab-btn-me"
           onClick={() => setActiveTab('profile')}

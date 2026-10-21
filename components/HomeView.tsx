@@ -154,37 +154,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
       if (isCancelled) return;
       setAllBooks(booksList);
 
-      const inProg = booksList.filter(
-        b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
-      );
-      setInProgressBooks(inProg);
-
-      // Prioritize explicitly last read book (stored in localStorage or most recent lastReadAt)
-      const lastReadId = localStorage.getItem('altto_last_read_book_id');
-      let topBook: Book | null = null;
-      if (lastReadId) {
-        topBook = booksList.find(b => b.id === lastReadId) || null;
-      }
-      if (!topBook) {
-        const sorted = [...booksList].sort((a, b) => {
-          const timeA = a.lastReadAt ? new Date(a.lastReadAt).getTime() : 0;
-          const timeB = b.lastReadAt ? new Date(b.lastReadAt).getTime() : 0;
-          return timeB - timeA;
-        });
-        const inProgSorted = sorted.filter(
-          b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
-        );
-        topBook = inProgSorted.length > 0 ? inProgSorted[0] : sorted.length > 0 ? sorted[0] : null;
-      }
-      setFeaturedBook(topBook);
-
-      if (topBook) {
-        const prog = await getReadingProgress(topBook.id);
-        if (!isCancelled) {
-          setFeaturedProgress(prog ? prog.percentage : topBook.progressPercent || 0);
-        }
-      }
-
       // 1. Devotional book from library
       const savedDevId = localStorage.getItem('altto_devotional_book_id');
       let devTarget: Book | null = null;
@@ -198,7 +167,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             b.title.toLowerCase().includes('cristo') ||
             b.title.toLowerCase().includes('deus')
         );
-        devTarget = candidate || booksList[0];
+        devTarget = candidate || null;
       }
       setDevotionalBook(devTarget);
 
@@ -219,12 +188,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
       }
       const isAlmeida = localStorage.getItem('altto_use_official_almeida') === 'true';
       const savedBibleBookId = localStorage.getItem('altto_selected_bible_book_id');
+      let currentBibleBook: Book | null = null;
 
       if (isAlmeida) {
         setUseOfficialAlmeida(true);
       } else if (savedBibleBookId) {
         const found = booksList.find(b => b.id === savedBibleBookId);
         if (found) {
+          currentBibleBook = found;
           setBibleBook(found);
           setUseOfficialAlmeida(false);
         } else {
@@ -234,13 +205,65 @@ export const HomeView: React.FC<HomeViewProps> = ({
         const candidate = booksList.find(
           b => b.title.toLowerCase().includes('bíblia') || b.title.toLowerCase().includes('biblia')
         );
-        setBibleBook(candidate || booksList[0]);
-        setUseOfficialAlmeida(false);
+        if (candidate) {
+          currentBibleBook = candidate;
+          setBibleBook(candidate);
+          setUseOfficialAlmeida(false);
+        } else {
+          setUseOfficialAlmeida(true);
+        }
       } else {
         setUseOfficialAlmeida(true);
       }
 
-      // 3. Bible plan config
+      // 3. Exclude selected Bible and Devotional books from "Continuar Lendo"
+      const excludedIds = new Set<string>();
+      if (savedBibleBookId) excludedIds.add(savedBibleBookId);
+      if (currentBibleBook?.id) excludedIds.add(currentBibleBook.id);
+      if (savedDevId) excludedIds.add(savedDevId);
+      if (devTarget?.id) excludedIds.add(devTarget.id);
+
+      const regularBooks = booksList.filter(b => !excludedIds.has(b.id));
+
+      const inProg = regularBooks.filter(
+        b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
+      );
+      setInProgressBooks(inProg);
+
+      // Prioritize explicitly last read book (stored in localStorage or most recent lastReadAt)
+      let lastReadId = localStorage.getItem('altto_last_read_book_id');
+      if (lastReadId && excludedIds.has(lastReadId)) {
+        localStorage.removeItem('altto_last_read_book_id');
+        lastReadId = null;
+      }
+
+      let topBook: Book | null = null;
+      if (lastReadId) {
+        topBook = regularBooks.find(b => b.id === lastReadId) || null;
+      }
+      if (!topBook) {
+        const sorted = [...regularBooks].sort((a, b) => {
+          const timeA = a.lastReadAt ? new Date(a.lastReadAt).getTime() : 0;
+          const timeB = b.lastReadAt ? new Date(b.lastReadAt).getTime() : 0;
+          return timeB - timeA;
+        });
+        const inProgSorted = sorted.filter(
+          b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
+        );
+        topBook = inProgSorted.length > 0 ? inProgSorted[0] : sorted.length > 0 ? sorted[0] : null;
+      }
+      setFeaturedBook(topBook);
+
+      if (topBook) {
+        const prog = await getReadingProgress(topBook.id);
+        if (!isCancelled) {
+          setFeaturedProgress(prog ? prog.percentage : topBook.progressPercent || 0);
+        }
+      } else {
+        setFeaturedProgress(0);
+      }
+
+      // 4. Bible plan config
       const savedPlan = localStorage.getItem('altto_bible_plan_config');
       if (savedPlan) {
         try {
@@ -248,7 +271,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         } catch {}
       }
 
-      // 4. Plan start date & start chapter
+      // 5. Plan start date & start chapter
       const savedStartDate = localStorage.getItem('altto_bible_plan_start_date');
       if (savedStartDate) {
         setPlanStartDate(savedStartDate);
@@ -265,7 +288,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }
       }
 
-      // 5. Period status for active date
+      // 6. Period status for active date
       const savedStatus = localStorage.getItem(`altto_bible_status_${activeDate}`);
       if (savedStatus) {
         try {
@@ -279,25 +302,51 @@ export const HomeView: React.FC<HomeViewProps> = ({
     const handleLastReadBookSync = async (e?: Event) => {
       const customEvt = e as CustomEvent<{ bookId: string; percentage?: number }>;
       const targetId = customEvt?.detail?.bookId || localStorage.getItem('altto_last_read_book_id');
-      if (!targetId || isCancelled) return;
+      if (isCancelled) return;
       const freshBooks = await getBooks();
       if (isCancelled) return;
       setAllBooks(freshBooks);
-      const found = freshBooks.find(b => b.id === targetId);
+
+      const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+      const curDevId = localStorage.getItem('altto_devotional_book_id');
+      const excludedIds = new Set<string>();
+      if (curBibleId) excludedIds.add(curBibleId);
+      if (curDevId) excludedIds.add(curDevId);
+      if (devotionalBook?.id) excludedIds.add(devotionalBook.id);
+      if (bibleBook?.id) excludedIds.add(bibleBook.id);
+
+      const regularBooks = freshBooks.filter(b => !excludedIds.has(b.id));
+      const inProg = regularBooks.filter(
+        b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
+      );
+      setInProgressBooks(inProg);
+
+      let found: Book | null = null;
+      if (targetId && !excludedIds.has(targetId)) {
+        found = regularBooks.find(b => b.id === targetId) || null;
+      }
+      if (!found) {
+        const sorted = [...regularBooks].sort((a, b) => {
+          const timeA = a.lastReadAt ? new Date(a.lastReadAt).getTime() : 0;
+          const timeB = b.lastReadAt ? new Date(b.lastReadAt).getTime() : 0;
+          return timeB - timeA;
+        });
+        found = inProg.length > 0 ? inProg[0] : sorted.length > 0 ? sorted[0] : null;
+      }
+
       if (found) {
         setFeaturedBook(found);
         const prog = await getReadingProgress(found.id);
         if (!isCancelled) {
-          const pct = customEvt?.detail?.percentage !== undefined
+          const pct = customEvt?.detail?.percentage !== undefined && targetId === found.id
             ? customEvt.detail.percentage
             : prog ? prog.percentage : found.progressPercent || 0;
           setFeaturedProgress(pct);
         }
+      } else {
+        setFeaturedBook(null);
+        setFeaturedProgress(0);
       }
-      const inProg = freshBooks.filter(
-        b => b.status === 'in_progress' || (b.progressPercent || 0) > 0
-      );
-      setInProgressBooks(inProg);
     };
 
     window.addEventListener('altto_last_read_book_updated', handleLastReadBookSync);
@@ -416,6 +465,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         bookData: bibleBook,
         targetChapterQuery: `${startInfo.bookName} ${startInfo.chapter}`,
         period,
+        isBible: true,
         isReadAlready: periodStatus[period],
       });
     } else {
@@ -431,6 +481,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         title: devotionalBook.title,
         subtitle: 'Devocional Diário',
         bookData: devotionalBook,
+        isDevotional: true,
         isReadAlready: isDevReadToday,
       });
     } else {
@@ -515,7 +566,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const timelineProgressPercent = Math.round((completedTimelineSteps / totalTimelineSteps) * 100);
 
   return (
-    <div id="home-view-container" className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-10">
+    <div id="home-view-container" className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 overflow-x-hidden w-full">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#292532] text-white px-4 py-2.5 rounded-xl text-xs font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200 flex items-center gap-2">
@@ -524,15 +575,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* 1. Header Editorial & Saudação */}
-      <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#EEEAF5] pb-6">
+      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EEEAF5] pb-4">
         <div>
-          <span className="text-xs font-sans text-[#77619E] tracking-wider uppercase font-semibold">
+          <span className="text-[11px] font-sans text-[#77619E] tracking-wider uppercase font-semibold">
             {getGreeting()}, {userProfile.name?.split(' ')[0] || 'Leitor'}
           </span>
-          <h1 className="font-editorial text-3xl sm:text-4xl text-[#292532] mt-1 font-normal tracking-tight">
+          <h1 className="font-editorial text-2xl sm:text-3xl text-[#292532] mt-0.5 font-normal tracking-tight">
             Sua Jornada Editorial
           </h1>
-          <p className="text-xs sm:text-sm text-[#817B89] mt-1 max-w-md">
+          <p className="text-xs text-[#817B89] mt-0.5 max-w-md">
             Acompanhe em tempo real a linha do tempo do seu plano bíblico, devocional diário e livro em leitura.
           </p>
         </div>
@@ -540,7 +591,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSearchModal(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#FBF9FF] border border-[#EEEAF5] hover:border-[#B6A2DB] text-xs text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FBF9FF] border border-[#EEEAF5] hover:border-[#B6A2DB] text-xs text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
           >
             <Search className="w-3.5 h-3.5 text-[#B6A2DB]" />
             <span>Buscar título...</span>
@@ -549,37 +600,37 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </section>
 
       {/* 2. LINHA DO TEMPO DIÁRIA (Plano Bíblico + Devocional + Livro Atual) */}
-      <section className="bg-white border border-[#EEEAF5] rounded-3xl p-5 sm:p-8 space-y-7 shadow-xs">
+      <section className="bg-white border border-[#EEEAF5] rounded-2xl p-4 sm:p-6 space-y-5 shadow-xs">
         {/* Timeline Header & Control Bar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#F5F2F9] pb-6">
-          <div className="space-y-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#F5F2F9] pb-4">
+          <div className="space-y-0.5">
             <div className="flex items-center gap-2">
-              <Compass className="w-5 h-5 text-[#77619E]" />
-              <h2 className="font-editorial text-2xl text-[#292532]">Linha do Tempo de Leitura</h2>
+              <Compass className="w-4 h-4 text-[#77619E]" />
+              <h2 className="font-editorial text-xl sm:text-2xl text-[#292532]">Linha do Tempo de Leitura</h2>
             </div>
-            <p className="text-xs text-[#817B89]">
+            <p className="text-[11px] sm:text-xs text-[#817B89]">
               Cronologia diária sincronizada: Palavra sagrada, devocional reflexivo e literatura em andamento.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Date Navigator */}
-            <div className="inline-flex items-center rounded-xl bg-[#FBF9FF] border border-[#EEEAF5] p-1 text-xs">
+            <div className="inline-flex items-center rounded-xl bg-[#FBF9FF] border border-[#EEEAF5] p-0.5 text-xs">
               <button
                 onClick={() => changeDateByDays(-1)}
                 title="Dia anterior"
-                className="p-1.5 hover:bg-white rounded-lg text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
+                className="p-1 hover:bg-white rounded-lg text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <div className="px-2.5 font-medium text-[#292532] flex items-center gap-1.5 min-w-[110px] justify-center">
+              <div className="px-2 font-medium text-[#292532] flex items-center gap-1.5 min-w-[95px] justify-center text-xs">
                 <Calendar className="w-3.5 h-3.5 text-[#77619E]" />
                 <span>{formatDateLabel(activeDate)}</span>
               </div>
               <button
                 onClick={() => changeDateByDays(1)}
                 title="Próximo dia"
-                className="p-1.5 hover:bg-white rounded-lg text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
+                className="p-1 hover:bg-white rounded-lg text-[#817B89] hover:text-[#292532] transition-colors cursor-pointer"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -595,18 +646,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
 
             {/* Overall Progress Pill */}
-            <div className="inline-flex items-center gap-2 bg-[#F5F0FF] border border-[#EEEAF5] px-3 py-1.5 rounded-xl">
-              <div className="w-2 h-2 rounded-full bg-[#77619E] animate-pulse" />
+            <div className="inline-flex items-center gap-1.5 bg-[#F5F0FF] border border-[#EEEAF5] px-2.5 py-1 rounded-xl">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#77619E] animate-pulse" />
               <span className="text-xs font-semibold text-[#77619E]">
-                {completedTimelineSteps} de {totalTimelineSteps} etapas ({timelineProgressPercent}%)
+                {completedTimelineSteps}/{totalTimelineSteps} ({timelineProgressPercent}%)
               </span>
             </div>
           </div>
         </div>
 
         {/* Progress Bar Header */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-[#817B89]">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] text-[#817B89]">
             <span className="font-medium text-[#292532]">Progresso da Linha do Tempo</span>
             {timelineProgressPercent === 100 ? (
               <span className="text-emerald-700 font-semibold flex items-center gap-1">
@@ -614,10 +665,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 Jornada Diária Completa!
               </span>
             ) : (
-              <span>{totalTimelineSteps - completedTimelineSteps} etapa(s) restantes</span>
+              <span>{totalTimelineSteps - completedTimelineSteps} restante(s)</span>
             )}
           </div>
-          <div className="w-full h-2 bg-[#F5F2F9] rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-[#F5F2F9] rounded-full overflow-hidden">
             <div
               className="h-full bg-linear-to-r from-[#B6A2DB] to-[#77619E] rounded-full transition-all duration-500 ease-out"
               style={{ width: `${Math.max(4, timelineProgressPercent)}%` }}
@@ -625,11 +676,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
 
-        {/* Filter Chips / Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+        {/* Filter Chips / Tabs — 100% Compactos e sem rolagem lateral */}
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 text-xs">
           <button
             onClick={() => setTimelineFilter('all')}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer text-[11px] sm:text-xs ${
               timelineFilter === 'all'
                 ? 'bg-[#77619E] text-white shadow-xs'
                 : 'bg-[#FBF9FF] text-[#817B89] hover:text-[#292532] border border-[#EEEAF5]'
@@ -639,7 +690,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
           <button
             onClick={() => setTimelineFilter('bible')}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer text-[11px] sm:text-xs ${
               timelineFilter === 'bible'
                 ? 'bg-[#77619E] text-white shadow-xs'
                 : 'bg-[#FBF9FF] text-[#817B89] hover:text-[#292532] border border-[#EEEAF5]'
@@ -649,7 +700,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
           <button
             onClick={() => setTimelineFilter('devotional')}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer text-[11px] sm:text-xs ${
               timelineFilter === 'devotional'
                 ? 'bg-[#77619E] text-white shadow-xs'
                 : 'bg-[#FBF9FF] text-[#817B89] hover:text-[#292532] border border-[#EEEAF5]'
@@ -659,7 +710,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
           <button
             onClick={() => setTimelineFilter('book')}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer text-[11px] sm:text-xs ${
               timelineFilter === 'book'
                 ? 'bg-[#77619E] text-white shadow-xs'
                 : 'bg-[#FBF9FF] text-[#817B89] hover:text-[#292532] border border-[#EEEAF5]'
@@ -670,10 +721,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Chronological Timeline Body */}
-        <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-3 sm:before:left-4 before:top-3 before:bottom-3 before:w-0.5 before:bg-[#EAE4F3]">
+        <div className="relative pl-6 sm:pl-8 space-y-5 sm:space-y-6 before:absolute before:left-3 sm:before:left-4 before:top-3 before:bottom-3 before:w-0.5 before:bg-[#EAE4F3] w-full max-w-full min-w-0">
           {/* STEP 1: Plano Bíblico - Manhã */}
           {(timelineFilter === 'all' || timelineFilter === 'bible') && (
-            <div className="relative group">
+            <div className="relative group w-full max-w-full min-w-0">
               {/* Timeline Node Icon */}
               <div
                 className={`absolute -left-6 sm:-left-8 top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -693,7 +744,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               {/* Card Container */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                className={`p-3.5 sm:p-5 rounded-2xl border transition-all w-full max-w-full min-w-0 overflow-hidden ${
                   periodStatus.morning
                     ? 'bg-emerald-50/40 border-emerald-200/80'
                     : currentPeriod === 'morning'
@@ -701,38 +752,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     : 'bg-white border-[#EEEAF5] hover:border-[#DCD4EB]'
                 }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full min-w-0">
+                  <div className="space-y-1 w-full max-w-full min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2 flex-wrap max-w-full">
+                      <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5] shrink-0">
                         08:00 · Manhã · Plano Bíblico
                       </span>
                       {currentPeriod === 'morning' && !periodStatus.morning && (
-                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                           Momento Atual
                         </span>
                       )}
                       {periodStatus.morning && (
-                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <Check className="w-3 h-3" />
                           Concluído
                         </span>
                       )}
                     </div>
 
-                    <h3 className="font-editorial text-lg text-[#292532] font-medium">
+                    <h3 className="font-editorial text-base sm:text-lg text-[#292532] font-medium truncate block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
                       Manhã: {morningChapters}
                     </h3>
-                    <p className="text-xs text-[#817B89]">
+                    <p className="text-xs text-[#817B89] line-clamp-2">
                       Inicie o dia meditando nos primeiros capítulos propostos para o plano.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <button
                       onClick={(e) => handleToggleBiblePeriod('morning', e)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
                         periodStatus.morning
                           ? 'bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50'
                           : 'bg-white border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB]'
@@ -744,7 +795,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     <button
                       onClick={() => handleOpenCurrentPeriodReader('morning')}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                     >
                       <BookOpen className="w-3.5 h-3.5" />
                       <span>Ler Capítulo</span>
@@ -757,7 +808,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* STEP 2: Devocional Diário */}
           {(timelineFilter === 'all' || timelineFilter === 'devotional') && (
-            <div className="relative group">
+            <div className="relative group w-full max-w-full min-w-0">
               {/* Timeline Node Icon */}
               <div
                 className={`absolute -left-6 sm:-left-8 top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -775,42 +826,42 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               {/* Card Container */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                className={`p-3.5 sm:p-5 rounded-2xl border transition-all w-full max-w-full min-w-0 overflow-hidden ${
                   isDevReadToday
                     ? 'bg-emerald-50/40 border-emerald-200/80'
                     : 'bg-white border-[#EEEAF5] hover:border-[#DCD4EB]'
                 }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/70">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full min-w-0">
+                  <div className="space-y-1 w-full max-w-full min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2 flex-wrap max-w-full">
+                      <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/70 shrink-0">
                         10:30 · Reflexão · Devocional Diário
                       </span>
                       {isDevReadToday ? (
-                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <Check className="w-3 h-3" />
                           Concluído
                         </span>
                       ) : (
-                        <span className="text-[10px] font-medium bg-[#F5F0FF] text-[#77619E] px-2 py-0.5 rounded-full border border-[#EEEAF5]">
+                        <span className="text-[10px] font-medium bg-[#F5F0FF] text-[#77619E] px-2 py-0.5 rounded-full border border-[#EEEAF5] shrink-0">
                           Pendente
                         </span>
                       )}
                     </div>
 
-                    <h3 className="font-editorial text-lg text-[#292532] font-medium">
+                    <h3 className="font-editorial text-base sm:text-lg text-[#292532] font-medium truncate block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
                       {devotionalBook ? devotionalBook.title : '365 Dias com Deus – Meditação'}
                     </h3>
-                    <p className="text-xs text-[#817B89]">
+                    <p className="text-xs text-[#817B89] line-clamp-2">
                       Pausa sagrada para aquietar o coração, meditar nas promessas e registrar notas espirituais.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <button
                       onClick={handleToggleDevotional}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
                         isDevReadToday
                           ? 'bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50'
                           : 'bg-white border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB]'
@@ -822,7 +873,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     <button
                       onClick={handleOpenDevotional}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                     >
                       <BookMarked className="w-3.5 h-3.5" />
                       <span>Ler Devocional</span>
@@ -835,7 +886,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* STEP 3: Plano Bíblico - Tarde */}
           {(timelineFilter === 'all' || timelineFilter === 'bible') && (
-            <div className="relative group">
+            <div className="relative group w-full max-w-full min-w-0">
               {/* Timeline Node Icon */}
               <div
                 className={`absolute -left-6 sm:-left-8 top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -855,7 +906,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               {/* Card Container */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                className={`p-3.5 sm:p-5 rounded-2xl border transition-all w-full max-w-full min-w-0 overflow-hidden ${
                   periodStatus.afternoon
                     ? 'bg-emerald-50/40 border-emerald-200/80'
                     : currentPeriod === 'afternoon'
@@ -863,38 +914,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     : 'bg-white border-[#EEEAF5] hover:border-[#DCD4EB]'
                 }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full min-w-0">
+                  <div className="space-y-1 w-full max-w-full min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2 flex-wrap max-w-full">
+                      <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5] shrink-0">
                         14:00 · Tarde · Plano Bíblico
                       </span>
                       {currentPeriod === 'afternoon' && !periodStatus.afternoon && (
-                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                           Momento Atual
                         </span>
                       )}
                       {periodStatus.afternoon && (
-                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <Check className="w-3 h-3" />
                           Concluído
                         </span>
                       )}
                     </div>
 
-                    <h3 className="font-editorial text-lg text-[#292532] font-medium">
+                    <h3 className="font-editorial text-base sm:text-lg text-[#292532] font-medium truncate block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
                       Tarde: {afternoonChapters}
                     </h3>
-                    <p className="text-xs text-[#817B89]">
+                    <p className="text-xs text-[#817B89] line-clamp-2">
                       Continuação do plano para alimentar a mente no decorrer da rotina.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <button
                       onClick={(e) => handleToggleBiblePeriod('afternoon', e)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
                         periodStatus.afternoon
                           ? 'bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50'
                           : 'bg-white border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB]'
@@ -906,7 +957,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     <button
                       onClick={() => handleOpenCurrentPeriodReader('afternoon')}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                     >
                       <BookOpen className="w-3.5 h-3.5" />
                       <span>Ler Capítulo</span>
@@ -917,23 +968,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           )}
 
-          {/* STEP 4: LIVRO QUE ESTIVER SENDO LIDO NO MOMENTO */}
+          {/* STEP 4: LIVRO QUE ESTIVER SENDO LIDO NO MOMENTO (CONTINUAR LEITURA) */}
           {(timelineFilter === 'all' || timelineFilter === 'book') && (
-            <div className="relative group">
+            <div className="relative group w-full max-w-full min-w-0">
               {/* Timeline Node Icon */}
               <div className="absolute -left-6 sm:-left-8 top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all bg-white border-[#77619E] text-[#77619E] shadow-2xs">
                 <BookOpen className="w-3.5 h-3.5" />
               </div>
 
               {/* Card Container */}
-              <div className="p-4 sm:p-5 rounded-2xl border border-[#EEEAF5] bg-[#FBF9FF] hover:border-[#B6A2DB] transition-all">
-                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="p-3.5 sm:p-5 rounded-2xl border border-[#EEEAF5] bg-[#FBF9FF] hover:border-[#B6A2DB] transition-all w-full max-w-full min-w-0 overflow-hidden box-border">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between w-full max-w-full min-w-0">
                   {featuredBook ? (
-                    <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1">
+                    <div className="flex items-start sm:items-center gap-3 sm:gap-4 w-full max-w-full min-w-0 flex-1 overflow-hidden">
                       {/* Book Cover Thumbnail with preserved aspect ratio */}
                       <div
                         onClick={() => handleOpenBook(featuredBook)}
-                        className="w-16 sm:w-20 aspect-[2/3] shrink-0 rounded-lg overflow-hidden border border-[#EEEAF5] bg-white shadow-2xs cursor-pointer group/thumb relative"
+                        className="w-14 sm:w-16 md:w-20 aspect-[2/3] shrink-0 rounded-lg overflow-hidden border border-[#EEEAF5] bg-white shadow-2xs cursor-pointer group/thumb relative select-none"
                       >
                         {featuredBook.coverUrl ? (
                           <img
@@ -955,30 +1006,34 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       </div>
 
                       {/* Info & Progress */}
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200/70">
+                      <div className="w-full max-w-full min-w-0 flex-1 space-y-1.5 overflow-hidden">
+                        <div className="flex items-center gap-1.5 flex-wrap max-w-full">
+                          <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200/70 shrink-0">
                             17:00 · Continuar Leitura
                           </span>
-                          <span className="text-[10px] font-medium bg-[#F5F0FF] text-[#77619E] px-2 py-0.5 rounded-full border border-[#EEEAF5]">
+                          <span className="text-[10px] font-medium bg-[#F5F0FF] text-[#77619E] px-2 py-0.5 rounded-full border border-[#EEEAF5] shrink-0">
                             {Math.round(featuredProgress)}% lido
                           </span>
                         </div>
 
-                        <div>
+                        <div className="w-full max-w-full min-w-0 overflow-hidden">
                           <h3
                             onClick={() => handleOpenBook(featuredBook)}
-                            className="font-editorial text-lg text-[#292532] hover:text-[#77619E] cursor-pointer transition-colors truncate"
+                            className="font-editorial text-sm sm:text-base md:text-lg text-[#292532] hover:text-[#77619E] cursor-pointer transition-colors block w-full max-w-full truncate overflow-hidden text-ellipsis whitespace-nowrap font-medium"
+                            title={featuredBook.title}
                           >
                             {featuredBook.title}
                           </h3>
-                          <p className="text-xs text-[#817B89] truncate">
-                            {featuredBook.author || 'Autor da obra'}
+                          <p
+                            className="text-xs text-[#817B89] block w-full max-w-full truncate overflow-hidden text-ellipsis whitespace-nowrap mt-0.5"
+                            title={featuredBook.author || 'Autor da obra'}
+                          >
+                            {featuredBook.author || 'Autor desconhecido'}
                           </p>
                         </div>
 
                         {/* Visual Progress Bar */}
-                        <div className="space-y-1 max-w-sm">
+                        <div className="space-y-1 w-full max-w-full min-w-0">
                           <div className="w-full h-1.5 bg-[#EEEAF5] rounded-full overflow-hidden">
                             <div
                               className="h-full bg-[#77619E] rounded-full transition-all duration-300"
@@ -989,14 +1044,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                         {/* Switcher if multiple books in progress */}
                         {inProgressBooks.length > 1 && (
-                          <div className="flex items-center gap-2 pt-1 text-[11px] text-[#817B89]">
-                            <span>Trocar livro ativo:</span>
-                            <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
+                          <div className="flex items-center gap-1.5 pt-0.5 text-[11px] text-[#817B89] w-full max-w-full min-w-0 overflow-hidden">
+                            <span className="shrink-0 text-[10px]">Trocar:</span>
+                            <div className="flex items-center gap-1 py-0.5 overflow-x-auto no-scrollbar max-w-full min-w-0 flex-1">
                               {inProgressBooks.map((b) => (
                                 <button
                                   key={b.id}
                                   onClick={() => handleSelectFeaturedBook(b)}
-                                  className={`px-2 py-0.5 rounded-md border text-[10px] truncate max-w-[120px] transition-colors cursor-pointer ${
+                                  title={b.title}
+                                  className={`px-2 py-0.5 rounded-md border text-[10px] truncate max-w-[90px] shrink-0 transition-colors cursor-pointer ${
                                     featuredBook.id === b.id
                                       ? 'bg-[#77619E] text-white border-[#77619E]'
                                       : 'bg-white border-[#EEEAF5] text-[#817B89] hover:text-[#292532]'
@@ -1011,32 +1067,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-1 flex-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200/70">
+                    <div className="space-y-1 flex-1 w-full max-w-full min-w-0 overflow-hidden">
+                      <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200/70 shrink-0">
                         17:00 · Continuar Leitura
                       </span>
-                      <h3 className="font-editorial text-lg text-[#292532]">
+                      <h3 className="font-editorial text-base sm:text-lg text-[#292532] truncate block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
                         Nenhum livro aberto no momento
                       </h3>
-                      <p className="text-xs text-[#817B89]">
+                      <p className="text-xs text-[#817B89] line-clamp-2">
                         Importe arquivos PDF ou EPUB na biblioteca para acompanhar seu progresso de leitura aqui.
                       </p>
                     </div>
                   )}
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     {featuredBook ? (
                       <>
                         <button
                           onClick={() => onNavigateTab('library')}
-                          className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB] transition-colors cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB] transition-colors cursor-pointer shrink-0"
                         >
                           Biblioteca
                         </button>
                         <button
                           onClick={() => handleOpenBook(featuredBook)}
-                          className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                         >
                           <BookOpen className="w-3.5 h-3.5" />
                           <span>Continuar Lendo</span>
@@ -1045,7 +1101,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     ) : (
                       <button
                         onClick={() => onNavigateTab('library')}
-                        className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Abrir Biblioteca</span>
@@ -1059,7 +1115,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* STEP 5: Plano Bíblico - Noite */}
           {(timelineFilter === 'all' || timelineFilter === 'bible') && (
-            <div className="relative group">
+            <div className="relative group w-full max-w-full min-w-0">
               {/* Timeline Node Icon */}
               <div
                 className={`absolute -left-6 sm:-left-8 top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -1079,7 +1135,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               {/* Card Container */}
               <div
-                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                className={`p-3.5 sm:p-5 rounded-2xl border transition-all w-full max-w-full min-w-0 overflow-hidden ${
                   periodStatus.night
                     ? 'bg-emerald-50/40 border-emerald-200/80'
                     : currentPeriod === 'night'
@@ -1087,38 +1143,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     : 'bg-white border-[#EEEAF5] hover:border-[#DCD4EB]'
                 }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full min-w-0">
+                  <div className="space-y-1 w-full max-w-full min-w-0 flex-1 overflow-hidden">
+                    <div className="flex items-center gap-2 flex-wrap max-w-full">
+                      <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] border border-[#EEEAF5] shrink-0">
                         21:00 · Noite · Plano Bíblico
                       </span>
                       {currentPeriod === 'night' && !periodStatus.night && (
-                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                           Momento Atual
                         </span>
                       )}
                       {periodStatus.night && (
-                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                           <Check className="w-3 h-3" />
                           Concluído
                         </span>
                       )}
                     </div>
 
-                    <h3 className="font-editorial text-lg text-[#292532] font-medium">
+                    <h3 className="font-editorial text-base sm:text-lg text-[#292532] font-medium truncate block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
                       Noite: {nightChapters}
                     </h3>
-                    <p className="text-xs text-[#817B89]">
+                    <p className="text-xs text-[#817B89] line-clamp-2">
                       Encerramento do dia em paz e serenidade sob a Palavra.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-0 shrink-0 w-full sm:w-auto justify-start sm:justify-end">
                     <button
                       onClick={(e) => handleToggleBiblePeriod('night', e)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
                         periodStatus.night
                           ? 'bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50'
                           : 'bg-white border-[#EEEAF5] text-[#817B89] hover:text-[#292532] hover:border-[#B6A2DB]'
@@ -1130,7 +1186,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                     <button
                       onClick={() => handleOpenCurrentPeriodReader('night')}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-[#77619E] hover:bg-[#68538D] text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
                     >
                       <BookOpen className="w-3.5 h-3.5" />
                       <span>Ler Capítulo</span>

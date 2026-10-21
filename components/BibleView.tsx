@@ -49,6 +49,7 @@ interface BibleViewProps {
     period?: 'morning' | 'afternoon' | 'night' | string;
     isReadAlready?: boolean;
     initialChapterOrDay?: number;
+    isBible?: boolean;
   }) => void;
   selectedDateStr?: string;
   onDateChange?: (date: string) => void;
@@ -423,6 +424,7 @@ export const BibleView: React.FC<BibleViewProps> = ({
         targetChapterNumber: chapterInfo.chapter,
         targetChapterQuery: `${chapterInfo.bookName} ${chapterInfo.chapter}`,
         period,
+        isBible: true,
       });
     }
   };
@@ -492,7 +494,7 @@ export const BibleView: React.FC<BibleViewProps> = ({
   }
 
   return (
-    <div id="bible-view-container" className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-7 text-[#292532] bg-[#FFFFFF] min-h-screen">
+    <div id="bible-view-container" className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 text-[#292532] bg-[#FFFFFF] min-h-screen overflow-x-hidden w-full">
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-[#EEEAF5] pb-5 flex-wrap gap-4">
         <div className="space-y-1">

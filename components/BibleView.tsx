@@ -320,6 +320,11 @@ export const BibleView: React.FC<BibleViewProps> = ({
     setUseOfficialAlmeida(false);
     localStorage.setItem('altto_selected_bible_book_id', book.id);
     localStorage.setItem('altto_use_official_almeida', 'false');
+    const curLastRead = localStorage.getItem('altto_last_read_book_id');
+    if (curLastRead === book.id) {
+      localStorage.removeItem('altto_last_read_book_id');
+    }
+    window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: '' } }));
     setShowBiblePickerModal(false);
     setToastMessage(`✓ "${book.title}" definida como sua Bíblia!`);
     setTimeout(() => setToastMessage(''), 3500);

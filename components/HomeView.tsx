@@ -222,6 +222,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
       if (currentBibleBook?.id) excludedIds.add(currentBibleBook.id);
       if (savedDevId) excludedIds.add(savedDevId);
       if (devTarget?.id) excludedIds.add(devTarget.id);
+      booksList.forEach(b => {
+        const t = b.title.toLowerCase();
+        if (t.includes('bíblia') || t.includes('biblia') || t.includes('devocional')) {
+          excludedIds.add(b.id);
+        }
+      });
 
       const regularBooks = booksList.filter(b => !excludedIds.has(b.id));
 
@@ -314,6 +320,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
       if (curDevId) excludedIds.add(curDevId);
       if (devotionalBook?.id) excludedIds.add(devotionalBook.id);
       if (bibleBook?.id) excludedIds.add(bibleBook.id);
+      freshBooks.forEach(b => {
+        const t = b.title.toLowerCase();
+        if (t.includes('bíblia') || t.includes('biblia') || t.includes('devocional')) {
+          excludedIds.add(b.id);
+        }
+      });
 
       const regularBooks = freshBooks.filter(b => !excludedIds.has(b.id));
       const inProg = regularBooks.filter(
@@ -490,24 +502,54 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const handleOpenBook = (book: Book) => {
-    try {
-      localStorage.setItem('altto_last_read_book_id', book.id);
-      window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: book.id } }));
-    } catch {}
-    setFeaturedBook(book);
-    getReadingProgress(book.id).then((prog) => {
-      setFeaturedProgress(prog ? prog.percentage : book.progressPercent || 0);
-    });
+    const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+    const curDevId = localStorage.getItem('altto_devotional_book_id');
+    const t = book.title.toLowerCase();
+    const isExcluded =
+      book.id === curBibleId ||
+      book.id === curDevId ||
+      book.id === bibleBook?.id ||
+      book.id === devotionalBook?.id ||
+      t.includes('bíblia') ||
+      t.includes('biblia') ||
+      t.includes('devocional');
+
+    if (!isExcluded) {
+      try {
+        localStorage.setItem('altto_last_read_book_id', book.id);
+        window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: book.id } }));
+      } catch {}
+      setFeaturedBook(book);
+      getReadingProgress(book.id).then((prog) => {
+        setFeaturedProgress(prog ? prog.percentage : book.progressPercent || 0);
+      });
+    }
     onOpenReader({
       contentType: 'book',
       contentId: book.id,
       title: book.title,
       subtitle: book.author || 'Biblioteca Altto',
       bookData: book,
+      isBible: isExcluded && (t.includes('bíblia') || t.includes('biblia')),
+      isDevotional: isExcluded && t.includes('devocional'),
     });
   };
 
   const handleSelectFeaturedBook = (book: Book) => {
+    const curBibleId = localStorage.getItem('altto_selected_bible_book_id');
+    const curDevId = localStorage.getItem('altto_devotional_book_id');
+    const t = book.title.toLowerCase();
+    const isExcluded =
+      book.id === curBibleId ||
+      book.id === curDevId ||
+      book.id === bibleBook?.id ||
+      book.id === devotionalBook?.id ||
+      t.includes('bíblia') ||
+      t.includes('biblia') ||
+      t.includes('devocional');
+
+    if (isExcluded) return;
+
     setFeaturedBook(book);
     try {
       localStorage.setItem('altto_last_read_book_id', book.id);

@@ -148,6 +148,11 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
   const handleSelectBook = (book: Book) => {
     setSelectedBook(book);
     localStorage.setItem('altto_devotional_book_id', book.id);
+    const curLastRead = localStorage.getItem('altto_last_read_book_id');
+    if (curLastRead === book.id) {
+      localStorage.removeItem('altto_last_read_book_id');
+    }
+    window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: '' } }));
     setShowBookPickerModal(false);
     showToast(`Livro devocional alterado para "${book.title}"`);
     getReadingProgress(book.id).then(prog => {

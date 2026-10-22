@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500000 },
+        "avatarPreset": { "type": "string", "maxLength": 50 },
+        "favoriteVerse": { "type": "string", "maxLength": 500 },
+        "bio": { "type": "string", "maxLength": 1000 },
+        "dailyGoalChapters": { "type": "number" },
+        "streakDays": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "name"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User persistent settings and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "selectedBibleBookId": { "type": "string", "maxLength": 128 },
+        "useOfficialAlmeida": { "type": "boolean" },
+        "devotionalBookId": { "type": "string", "maxLength": 128 },
+        "lastReadBookId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId"]
+    },
+    "UserBook": {
+      "title": "UserBook",
+      "description": "Book metadata in user library",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 300 },
+        "author": { "type": "string", "maxLength": 200 },
+        "format": { "type": "string", "maxLength": 20 },
+        "coverUrl": { "type": "string", "maxLength": 500000 },
+        "status": { "type": "string", "maxLength": 50 },
+        "progressPercent": { "type": "number" },
+        "isFavorite": { "type": "boolean" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "title", "format"]
+    },
+    "UserBibleStatus": {
+      "title": "UserBibleStatus",
+      "description": "Daily reading plan completion status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "morning": { "type": "boolean" },
+        "afternoon": { "type": "boolean" },
+        "night": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 5000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "date"]
+    },
+    "UserDevotionalStatus": {
+      "title": "UserDevotionalStatus",
+      "description": "Devotional completion dates and progress",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "completedDates": { "type": "string", "maxLength": 50000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId"]
+    },
+    "UserReadingProgress": {
+      "title": "UserReadingProgress",
+      "description": "Reading progress for books",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "contentId": { "type": "string", "maxLength": 128 },
+        "percentage": { "type": "number" },
+        "currentChapterOrDay": { "type": "number" },
+        "scrollTop": { "type": "number" },
+        "zoomLevel": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "contentId", "percentage"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile document"
+    },
+    "/users/{userId}/settings/main": {
+      "schema": { "$ref": "#/entities/UserSettings" },
+      "description": "Main user settings document"
+    },
+    "/users/{userId}/books/{bookId}": {
+      "schema": { "$ref": "#/entities/UserBook" },
+      "description": "User library book metadata"
+    },
+    "/users/{userId}/bible_status/{date}": {
+      "schema": { "$ref": "#/entities/UserBibleStatus" },
+      "description": "Daily Bible reading status per date"
+    },
+    "/users/{userId}/devotional_status/main": {
+      "schema": { "$ref": "#/entities/UserDevotionalStatus" },
+      "description": "Devotional completed dates progress"
+    },
+    "/users/{userId}/reading_progress/{progressId}": {
+      "schema": { "$ref": "#/entities/UserReadingProgress" },
+      "description": "Reading progress per content/book"
+    }
+  }
+}

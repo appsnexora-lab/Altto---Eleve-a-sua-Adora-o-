@@ -7,7 +7,6 @@ import {
   Sunset,
   Moon,
   Clock,
-  Sparkles,
   Library,
   Plus,
   Minus,
@@ -169,6 +168,7 @@ export const BibleView: React.FC<BibleViewProps> = ({
         if (isCancelled) return;
         if (isAlmeida) {
           setUseOfficialAlmeida(true);
+          setSelectedBibleBook(null);
           if (bibles.length > 0) {
             setSelectedOfficialBible(bibles[0]);
           }
@@ -177,21 +177,28 @@ export const BibleView: React.FC<BibleViewProps> = ({
           if (found) {
             setSelectedBibleBook(found);
             setUseOfficialAlmeida(false);
-          } else if (books.length > 0) {
-            setSelectedBibleBook(books[0]);
-            setUseOfficialAlmeida(false);
           } else {
             setUseOfficialAlmeida(true);
+            setSelectedBibleBook(null);
+            if (bibles.length > 0) setSelectedOfficialBible(bibles[0]);
           }
         } else if (books.length > 0) {
           const bibleCandidate = books.find(
             b => b.title.toLowerCase().includes('bíblia') || b.title.toLowerCase().includes('biblia')
           );
-          setSelectedBibleBook(bibleCandidate || books[0]);
-          setUseOfficialAlmeida(false);
-          localStorage.setItem('altto_selected_bible_book_id', (bibleCandidate || books[0]).id);
+          if (bibleCandidate) {
+            setSelectedBibleBook(bibleCandidate);
+            setUseOfficialAlmeida(false);
+            localStorage.setItem('altto_selected_bible_book_id', bibleCandidate.id);
+          } else {
+            setUseOfficialAlmeida(true);
+            setSelectedBibleBook(null);
+            if (bibles.length > 0) setSelectedOfficialBible(bibles[0]);
+          }
         } else {
           setUseOfficialAlmeida(true);
+          setSelectedBibleBook(null);
+          if (bibles.length > 0) setSelectedOfficialBible(bibles[0]);
         }
 
         const savedStatus = localStorage.getItem(`altto_bible_status_${activeDate}`);
@@ -325,6 +332,7 @@ export const BibleView: React.FC<BibleViewProps> = ({
       localStorage.removeItem('altto_last_read_book_id');
     }
     window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: '' } }));
+    window.dispatchEvent(new CustomEvent('altto_bible_book_changed', { detail: { bookId: book.id, isAlmeida: false } }));
     setShowBiblePickerModal(false);
     setToastMessage(`✓ "${book.title}" definida como sua Bíblia!`);
     setTimeout(() => setToastMessage(''), 3500);
@@ -334,6 +342,9 @@ export const BibleView: React.FC<BibleViewProps> = ({
     setUseOfficialAlmeida(true);
     setSelectedBibleBook(null);
     localStorage.setItem('altto_use_official_almeida', 'true');
+    localStorage.removeItem('altto_selected_bible_book_id');
+    window.dispatchEvent(new CustomEvent('altto_bible_book_changed', { detail: { isAlmeida: true } }));
+    window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: '' } }));
     setShowBiblePickerModal(false);
     setToastMessage('Bíblia João Ferreira de Almeida selecionada!');
     setTimeout(() => setToastMessage(''), 3500);
@@ -610,7 +621,7 @@ export const BibleView: React.FC<BibleViewProps> = ({
       <div className="bg-[#FFFFFF] border border-[#EEEAF5] rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between text-xs font-medium text-[#77619E] border-b border-[#EEEAF5] pb-3">
           <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-[#B6A2DB]" />
+            <BookOpen className="w-3.5 h-3.5 text-[#B6A2DB]" />
             Bíblia Selecionada
           </span>
           <span className="px-2.5 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] font-medium text-[10px] border border-[#EEEAF5]">

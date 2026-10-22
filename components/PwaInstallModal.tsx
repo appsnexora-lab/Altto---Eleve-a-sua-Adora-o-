@@ -8,7 +8,6 @@ import {
   MoreVertical,
   PlusSquare,
   CheckCircle2,
-  Sparkles,
   Download,
   ArrowRight,
 } from 'lucide-react';

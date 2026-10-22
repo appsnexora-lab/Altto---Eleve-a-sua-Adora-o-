@@ -6,7 +6,6 @@ import {
   BookOpen,
   Calendar,
   CheckCircle2,
-  Sparkles,
   Flame,
   Edit3,
   Target,
@@ -152,6 +151,7 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
     if (curLastRead === book.id) {
       localStorage.removeItem('altto_last_read_book_id');
     }
+    window.dispatchEvent(new CustomEvent('altto_devotional_book_changed', { detail: { bookId: book.id } }));
     window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: '' } }));
     setShowBookPickerModal(false);
     showToast(`Livro devocional alterado para "${book.title}"`);
@@ -287,7 +287,7 @@ export const DevotionalView: React.FC<DevotionalViewProps> = ({
         <div className="bg-[#FFFFFF] border border-[#EEEAF5] rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between text-xs font-medium text-[#77619E] border-b border-[#EEEAF5] pb-3">
             <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] font-semibold">
-              <Sparkles className="w-3.5 h-3.5 text-[#B6A2DB]" />
+              <BookMarked className="w-3.5 h-3.5 text-[#B6A2DB]" />
               Livro Devocional Selecionado
             </span>
             <span className="px-2.5 py-0.5 rounded-md bg-[#F5F0FF] text-[#77619E] font-medium text-[10px] border border-[#EEEAF5]">

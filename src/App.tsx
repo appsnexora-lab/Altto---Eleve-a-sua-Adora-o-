@@ -14,7 +14,10 @@ import { ReaderModal } from '@/components/ReaderModal';
 import { getBibles, importOfficialAlmeidaBible, saveBibleReading } from '@/lib/bibleService';
 import { getDevotionals, importOfficialDevotional, saveDevotionalReading } from '@/lib/devotionalService';
 import { markBookAsCurrentlyReading } from '@/lib/bookService';
+import { initUserProfile } from '@/lib/userService';
 import { ContentType, DevotionalDay, Book } from '@/types';
+import { auth, onAuthStateChanged } from '@/lib/firebase';
+import { pullFromCloud } from '@/lib/firebaseSyncService';
 
 interface ReaderState {
   isOpen: boolean;
@@ -65,6 +68,7 @@ export default function App() {
 
     async function initStarterData() {
       try {
+        await initUserProfile();
         const bibles = await getBibles();
         if (bibles.length === 0) {
           await importOfficialAlmeidaBible();
@@ -79,9 +83,16 @@ export default function App() {
     }
     initStarterData();
 
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        await pullFromCloud(user.uid);
+      }
+    });
+
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
+      unsubAuth();
     };
   }, []);
 

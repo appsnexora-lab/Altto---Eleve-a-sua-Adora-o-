@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Users collection and subcollections
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false; // PII protection
+
+      allow create: if isOwner(userId) && isValidId(userId)
+        && incoming().userId == request.auth.uid
+        && incoming().name is string
+        && incoming().name.size() <= 100;
+
+      allow update: if isOwner(userId) && isValidId(userId)
+        && incoming().userId == existing().userId
+        && incoming().name is string
+        && incoming().name.size() <= 100;
+
+      allow delete: if false;
+
+      // Settings subcollection
+      match /settings/{settingId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId)
+          && incoming().userId == request.auth.uid;
+        allow delete: if isOwner(userId) && isValidId(userId);
+      }
+
+      // Books subcollection
+      match /books/{bookId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId)
+          && incoming().userId == request.auth.uid
+          && incoming().title is string
+          && incoming().title.size() <= 300;
+        allow delete: if isOwner(userId) && isValidId(userId);
+      }
+
+      // Bible Status subcollection
+      match /bible_status/{date} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId)
+          && incoming().userId == request.auth.uid;
+        allow delete: if isOwner(userId) && isValidId(userId);
+      }
+
+      // Devotional Status subcollection
+      match /devotional_status/{docId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId)
+          && incoming().userId == request.auth.uid;
+        allow delete: if isOwner(userId) && isValidId(userId);
+      }
+
+      // Reading Progress subcollection
+      match /reading_progress/{progressId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId)
+          && incoming().userId == request.auth.uid
+          && incoming().percentage is number;
+        allow delete: if isOwner(userId) && isValidId(userId);
+      }
+    }
+  }
+}

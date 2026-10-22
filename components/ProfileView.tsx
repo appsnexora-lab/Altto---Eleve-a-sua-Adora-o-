@@ -17,7 +17,6 @@ import {
   Cloud,
   FileJson,
   Camera,
-  Sparkles,
   Check,
   Edit3,
   Flame,
@@ -33,6 +32,13 @@ import {
   AVATAR_PRESETS,
   UserProfile,
 } from '@/lib/userService';
+import { auth, onAuthStateChanged, User as FirebaseUser } from '@/lib/firebase';
+import {
+  loginWithGoogle,
+  logoutFirebase,
+  pushAllToCloud,
+  getCurrentUserId,
+} from '@/lib/firebaseSyncService';
 
 export const ProfileView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'profile' | 'diary' | 'bookmarks' | 'highlights' | 'backup'>(
@@ -48,6 +54,11 @@ export const ProfileView: React.FC = () => {
   const [selectedPreset, setSelectedPreset] = useState<string>(profile.avatarPreset || 'gold');
   const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Firebase Cloud Sync State
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(auth.currentUser);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
   const [reflections, setReflections] = useState<BibleReflection[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
@@ -118,7 +129,15 @@ export const ProfileView: React.FC = () => {
     try {
       const base64 = await processAvatarImage(file);
       setAvatarPreview(base64);
-      showToast('✓ Foto carregada! Clique em "Salvar Alterações" para confirmar.');
+      const updated = saveUserProfile({
+        name: nameInput.trim() || profile.name || 'Anderson',
+        avatarUrl: base64,
+        avatarPreset: selectedPreset,
+        favoriteVerse: verseInput.trim(),
+        bio: bioInput.trim(),
+      });
+      setProfile(updated);
+      showToast('✓ Foto do perfil atualizada e salva permanentemente!');
     } catch (err: any) {
       showToast(err.message || 'Erro ao processar imagem.');
     }
@@ -127,7 +146,27 @@ export const ProfileView: React.FC = () => {
   const handleRemoveAvatar = () => {
     setAvatarPreview('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-    showToast('Foto removida. Será utilizado o monograma clássico.');
+    const updated = saveUserProfile({
+      name: nameInput.trim() || profile.name || 'Anderson',
+      avatarUrl: '',
+      avatarPreset: selectedPreset,
+      favoriteVerse: verseInput.trim(),
+      bio: bioInput.trim(),
+    });
+    setProfile(updated);
+    showToast('✓ Foto removida e perfil salvo!');
+  };
+
+  const handleSelectPreset = (presetId: string) => {
+    setSelectedPreset(presetId);
+    const updated = saveUserProfile({
+      name: nameInput.trim() || profile.name || 'Anderson',
+      avatarPreset: presetId,
+      avatarUrl: avatarPreview,
+      favoriteVerse: verseInput.trim(),
+      bio: bioInput.trim(),
+    });
+    setProfile(updated);
   };
 
   // Save Profile Handler
@@ -144,7 +183,54 @@ export const ProfileView: React.FC = () => {
     setTimeout(() => {
       setIsSavingProfile(false);
       showToast(`✓ Perfil de ${updated.name} salvo com sucesso!`);
-    }, 400);
+    }, 300);
+  };
+
+  // Firebase Auth & Cloud Sync Handlers
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setFirebaseUser(u);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    try {
+      const u = await loginWithGoogle();
+      if (u) {
+        showToast(`✓ Conectado ao Firebase como ${u.displayName || u.email}!`);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao conectar com Firebase.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutFirebase();
+      showToast('Conta desconectada do Firebase.');
+    } catch (err: any) {
+      showToast('Erro ao desconectar.');
+    }
+  };
+
+  const handleManualCloudSync = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await pushAllToCloud();
+      if (res.success) {
+        showToast(`✓ Nuvem Firebase sincronizada com sucesso! (${res.count} itens gravados)`);
+      } else {
+        showToast('Conecte sua conta com o Google para sincronizar na nuvem.');
+      }
+    } catch (err: any) {
+      showToast('Erro ao sincronizar com o Firebase.');
+    } finally {
+      setIsSyncingCloud(false);
+    }
   };
 
   // Export Full JSON Backup
@@ -328,7 +414,7 @@ export const ProfileView: React.FC = () => {
 
               <div className="flex-1 text-center sm:text-left space-y-2">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-white border border-[#EEEAF5] text-[11px] font-medium text-[#77619E]">
-                  <Sparkles className="w-3 h-3 text-[#B6A2DB]" />
+                  <User className="w-3 h-3 text-[#B6A2DB]" />
                   <span>Pré-visualização da Saudação</span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-normal font-editorial text-[#292532] tracking-tight">
@@ -348,6 +434,62 @@ export const ProfileView: React.FC = () => {
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Firebase Cloud Sync Banner */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#FBF9FF] border border-[#EEEAF5] flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white border border-[#EEEAF5] shadow-xs flex items-center justify-center text-[#77619E] shrink-0">
+                <Cloud className="w-5 h-5 text-[#77619E]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-[#292532]">
+                    {firebaseUser ? 'Nuvem Conectada' : 'Nuvem Desconectada'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    firebaseUser ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    {firebaseUser ? 'Firebase Ativo' : 'Apenas Local'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#817B89] mt-0.5">
+                  {firebaseUser
+                    ? `Sincronizando com Google (${firebaseUser.email || firebaseUser.displayName}) · Projeto pacific-song-xrr5c`
+                    : 'Conecte sua conta Google para sincronizar e salvar fotos, bíblias e livros em qualquer aparelho.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+              {firebaseUser ? (
+                <>
+                  <button
+                    onClick={handleManualCloudSync}
+                    disabled={isSyncingCloud}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#77619E] hover:bg-[#68538D] text-white text-xs font-medium transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>{isSyncingCloud ? 'Sincronizando...' : 'Sincronizar Nuvem'}</span>
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-1.5 rounded-xl border border-[#EEEAF5] hover:bg-white text-rose-600 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    Desconectar
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleGoogleLogin}
+                  disabled={isLoggingIn}
+                  className="px-4 py-2 rounded-xl bg-[#77619E] hover:bg-[#68538D] text-white text-xs font-semibold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Cloud className="w-4 h-4" />
+                  <span>{isLoggingIn ? 'Conectando...' : 'Conectar com Google / Firebase'}</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -412,7 +554,7 @@ export const ProfileView: React.FC = () => {
                     <button
                       key={preset.id}
                       type="button"
-                      onClick={() => setSelectedPreset(preset.id)}
+                      onClick={() => handleSelectPreset(preset.id)}
                       className={`p-2 rounded-xl border text-xs font-medium flex items-center gap-2 cursor-pointer transition-all ${
                         selectedPreset === preset.id
                           ? 'border-[#77619E] bg-[#F5F0FF]'
@@ -667,6 +809,79 @@ export const ProfileView: React.FC = () => {
       {/* SECTION 4: BACKUP & OFFLINE */}
       {activeTab === 'backup' && (
         <div className="p-6 rounded-2xl bg-white border border-[#EEEAF5] space-y-6 shadow-xs">
+          {/* Firebase Cloud Sync Status Card */}
+          <div className="p-5 rounded-2xl bg-[#FBF9FF] border border-[#EEEAF5] space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white border border-[#EEEAF5] shadow-xs flex items-center justify-center text-[#77619E] shrink-0">
+                  <Cloud className="w-5 h-5 text-[#77619E]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-[#292532]">
+                      Sincronização em Nuvem (Firebase Firestore)
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      firebaseUser ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}>
+                      {firebaseUser ? 'Ativo & Conectado' : 'Aguardando Login'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#817B89] mt-0.5">
+                    {firebaseUser
+                      ? `Conta vinculada: ${firebaseUser.email || firebaseUser.displayName} · Projeto: pacific-song-xrr5c`
+                      : 'Todas as alterações de perfil, livros, bíblias e devocionais são sincronizadas na sua nuvem Firebase.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                {firebaseUser ? (
+                  <>
+                    <button
+                      onClick={handleManualCloudSync}
+                      disabled={isSyncingCloud}
+                      className="px-4 py-2 rounded-xl bg-[#77619E] hover:bg-[#68538D] text-white text-xs font-medium transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Cloud className="w-3.5 h-3.5" />
+                      <span>{isSyncingCloud ? 'Sincronizando...' : 'Sincronizar Tudo Agora'}</span>
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="px-3 py-2 rounded-xl border border-[#EEEAF5] hover:bg-white text-rose-600 text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Desconectar
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleGoogleLogin}
+                    disabled={isLoggingIn}
+                    className="px-4 py-2 rounded-xl bg-[#77619E] hover:bg-[#68538D] text-white text-xs font-semibold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Cloud className="w-4 h-4" />
+                    <span>{isLoggingIn ? 'Conectando...' : 'Conectar Conta Google'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#EEEAF5] grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] text-[#817B89]">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Foto & Perfil salvos no Firestore</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Bíblias & Devocionais sincronizados</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Progresso mantido ao fechar o app</span>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-start gap-3">
             <ShieldCheck className="w-6 h-6 text-[#77619E] shrink-0 mt-0.5" />
             <div>

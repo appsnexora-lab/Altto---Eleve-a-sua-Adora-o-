@@ -67,6 +67,8 @@ export function getUserProfile(): UserProfile {
   }
 }
 
+import { dbGet, dbPut } from './indexedDB';
+
 export function saveUserProfile(data: Partial<UserProfile>): UserProfile {
   const current = getUserProfile();
   const updated: UserProfile = {
@@ -85,10 +87,52 @@ export function saveUserProfile(data: Partial<UserProfile>): UserProfile {
       localStorage.setItem(STORAGE_KEY, raw);
       window.dispatchEvent(new Event('altto_profile_updated'));
     } catch (err) {
-      console.error('Erro ao salvar perfil:', err);
+      console.warn('Erro ao salvar perfil no localStorage (tentando fallback):', err);
+      try {
+        const withoutAvatar = { ...updated, avatarUrl: '' };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(withoutAvatar));
+        window.dispatchEvent(new Event('altto_profile_updated'));
+      } catch {}
     }
+
+    // Persist permanently in IndexedDB
+    try {
+      dbPut('blobs', {
+        id: 'altto_user_profile_durable',
+        data: JSON.stringify(updated),
+        mimeType: 'application/json',
+        name: 'user_profile',
+      }).catch(() => {});
+    } catch {}
   }
   return updated;
+}
+
+export async function initUserProfile(): Promise<UserProfile> {
+  const current = getUserProfile();
+  try {
+    const record = await dbGet('blobs', 'altto_user_profile_durable');
+    if (record && record.data) {
+      const raw = typeof record.data === 'string' ? record.data : new TextDecoder().decode(record.data as ArrayBuffer);
+      const parsed = JSON.parse(raw);
+      if (parsed) {
+        // If localStorage had no photo but IndexedDB has it, restore it
+        if (!current.avatarUrl && parsed.avatarUrl) {
+          const merged = { ...current, ...parsed };
+          cachedProfile = merged;
+          cachedRawString = JSON.stringify(merged);
+          try {
+            localStorage.setItem(STORAGE_KEY, cachedRawString);
+          } catch {}
+          window.dispatchEvent(new Event('altto_profile_updated'));
+          return merged;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar perfil do IndexedDB:', err);
+  }
+  return current;
 }
 
 export function subscribeUserProfile(callback: () => void): () => void {

@@ -23,7 +23,6 @@ import {
   FileText,
   AlertCircle,
   ArrowUpDown,
-  Sparkles,
   Bookmark,
   Calendar,
   RotateCcw,
@@ -59,6 +58,7 @@ import {
 } from '@/lib/bookService';
 import { getReadingProgress } from '@/lib/readerService';
 import { optimizeCoverThumbnail } from '@/lib/coverService';
+import { deleteBookFromCloud } from '@/lib/firebaseSyncService';
 
 interface LibraryViewProps {
   onOpenReader: (params: {
@@ -157,6 +157,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteModal, setShowBatchDeleteModal] = useState<boolean>(false);
   const [isDeletingBatch, setIsDeletingBatch] = useState<boolean>(false);
+
+  // Single Book Delete Confirmation Modal
+  const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
+  const [isDeletingBook, setIsDeletingBook] = useState<boolean>(false);
 
   const [repairProgress, setRepairProgress] = useState<{
     current: number;
@@ -437,12 +441,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
     }
   };
 
-  const handleDeleteBook = async (book: Book) => {
-    if (window.confirm(`Tem certeza que deseja excluir "${book.title}" da sua biblioteca?`)) {
-      await deleteBook(book.id);
-      setBooks((prev) => prev.filter((b) => b.id !== book.id));
-      if (selectedBook?.id === book.id) setSelectedBook(null);
-      showToast(`Livro "${book.title}" excluído.`);
+  const handleDeleteBook = (book: Book) => {
+    setBookToDelete(book);
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!bookToDelete) return;
+    setIsDeletingBook(true);
+    const bookTitle = bookToDelete.title.replace(/_/g, ' ');
+    const id = bookToDelete.id;
+    try {
+      await deleteBook(id);
+      deleteBookFromCloud(id).catch(() => {});
+      setBooks((prev) => prev.filter((b) => b.id !== id));
+      if (selectedBook?.id === id) {
+        setSelectedBook(null);
+      }
+      showToast(`✓ Livro "${bookTitle}" excluído com sucesso.`);
+      setBookToDelete(null);
+    } catch (err) {
+      console.error('Erro ao excluir livro:', err);
+      showToast('Erro ao excluir livro da biblioteca.');
+    } finally {
+      setIsDeletingBook(false);
     }
   };
 
@@ -797,7 +818,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
         <div className="bg-gradient-to-r from-[#FAF8FD] to-[#F5F0FF] border border-[#B6A2DB]/50 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#77619E] text-white flex items-center justify-center shrink-0 shadow-2xs">
-              <Sparkles className="w-4 h-4" />
+              <BookOpen className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs font-semibold text-[#292532]">
@@ -1051,8 +1072,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
 
                   {/* Informações Textuais Compactas */}
                   <div className="space-y-0.5 flex-1 flex flex-col justify-end">
-                    <h3 className="font-editorial text-[#292532] group-hover:text-[#77619E] transition-colors line-clamp-2 text-xs sm:text-sm font-medium leading-tight break-words">
-                      {book.title}
+                    <h3 className="font-editorial text-[#292532] group-hover:text-[#77619E] transition-colors line-clamp-2 text-xs sm:text-sm font-medium leading-tight break-words break-all">
+                      {book.title.replace(/_/g, ' ')}
                     </h3>
                     <p className="text-[#817B89] truncate text-[9px] sm:text-[11px]">
                       {book.author || 'Autor desconhecido'}
@@ -1182,8 +1203,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
 
       {/* 4. MODAL EDITORIAL DE DETALHES DO LIVRO SELECIONADO */}
       {selectedBook && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-[#EEEAF5] shadow-2xl max-w-xl w-full p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl border border-[#EEEAF5] shadow-2xl max-w-lg sm:max-w-xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-7 space-y-5 animate-in fade-in zoom-in-95 duration-150">
             {/* Top Bar with Close */}
             <div className="flex items-center justify-between border-b border-[#EEEAF5] pb-3">
               <span className="text-xs font-sans text-[#77619E] uppercase tracking-wider font-semibold">
@@ -1191,16 +1212,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
               </span>
               <button
                 onClick={() => setSelectedBook(null)}
-                className="text-[#817B89] hover:text-[#292532] p-1 rounded-lg hover:bg-[#F5F0FF] transition-colors"
+                className="text-[#817B89] hover:text-[#292532] p-1.5 rounded-lg hover:bg-[#F5F0FF] transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Book Presentation */}
-            <div className="flex flex-col sm:flex-row gap-6 items-start">
+            <div className="flex flex-col sm:flex-row gap-5 sm:gap-6 items-start w-full min-w-0">
               {/* Cover com Preservação 100% Original */}
-              <div className="w-32 sm:w-36 aspect-[2/3] shrink-0 rounded-2xl overflow-hidden border border-[#EEEAF5] bg-[#FAF8FD] shadow-xs relative flex items-center justify-center group">
+              <div className="w-28 sm:w-36 aspect-[2/3] shrink-0 mx-auto sm:mx-0 rounded-2xl overflow-hidden border border-[#EEEAF5] bg-[#FAF8FD] shadow-xs relative flex items-center justify-center group">
                 {selectedBook.coverUrl ? (
                   <>
                     <img
@@ -1219,7 +1240,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-[#F5F0FF] text-[#77619E]">
                     <BookOpen className="w-8 h-8 mb-2 opacity-50" />
-                    <span className="text-xs font-editorial">{selectedBook.title}</span>
+                    <span className="text-xs font-editorial line-clamp-3 break-words break-all">
+                      {selectedBook.title.replace(/_/g, ' ')}
+                    </span>
                   </div>
                 )}
                 <span className="absolute top-2 left-2 z-30 text-[10px] font-semibold uppercase bg-white/95 text-[#77619E] px-2 py-0.5 rounded shadow-2xs border border-[#EEEAF5]">
@@ -1228,12 +1251,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
               </div>
 
               {/* Metadata */}
-              <div className="flex-1 space-y-3 min-w-0">
-                <div>
-                  <h2 className="font-editorial text-2xl text-[#292532] font-normal leading-snug">
-                    {selectedBook.title}
+              <div className="flex-1 space-y-3 min-w-0 w-full overflow-hidden">
+                <div className="w-full min-w-0">
+                  <h2 className="font-editorial text-base sm:text-lg md:text-xl text-[#292532] font-medium leading-snug break-words break-all hyphens-auto overflow-hidden">
+                    {selectedBook.title.replace(/_/g, ' ')}
                   </h2>
-                  <p className="text-xs text-[#817B89] mt-1 font-medium">
+                  <p className="text-xs text-[#817B89] mt-1 font-medium break-words break-all">
                     {selectedBook.author || 'Autor desconhecido'}
                   </p>
                 </div>
@@ -1367,13 +1390,55 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenReader }) => {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleDeleteBook(selectedBook)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer font-medium"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Excluir</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4.0 MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE LIVRO (100% NATIVO, SEM window.confirm) */}
+      {bookToDelete && (
+        <div className="fixed inset-0 z-70 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-[#EEEAF5] shadow-2xl max-w-sm w-full p-5 sm:p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-editorial text-base text-[#292532] font-semibold">Excluir Livro?</h3>
+                <p className="text-[11px] text-[#817B89]">Esta ação removerá a obra da sua biblioteca.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#292532] bg-[#FBF9FF] p-3 rounded-xl border border-[#EEEAF5] break-words break-all font-editorial italic leading-relaxed">
+              &ldquo;{bookToDelete.title.replace(/_/g, ' ')}&rdquo;
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#EEEAF5]">
+              <button
+                type="button"
+                disabled={isDeletingBook}
+                onClick={() => setBookToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[#EEEAF5] hover:bg-[#FBF9FF] text-xs text-[#817B89] font-medium transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingBook}
+                onClick={handleExecuteDelete}
+                className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingBook ? 'Excluindo...' : 'Sim, Excluir'}</span>
+              </button>
             </div>
           </div>
         </div>

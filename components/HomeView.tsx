@@ -14,7 +14,6 @@ import {
   Sunset,
   Moon,
   Clock,
-  Sparkles,
   Bookmark,
   Plus,
   Calendar,
@@ -23,7 +22,7 @@ import {
   Compass,
 } from 'lucide-react';
 import { Book, Bible } from '@/types';
-import { getBooks } from '@/lib/bookService';
+import { getBooks, markBookAsCurrentlyReading } from '@/lib/bookService';
 import { getReadingProgress } from '@/lib/readerService';
 import {
   getBibleBookAndChapter,
@@ -135,14 +134,48 @@ export const HomeView: React.FC<HomeViewProps> = ({
       }
     };
 
+    const handleBibleBookSync = async () => {
+      const isAlm = localStorage.getItem('altto_use_official_almeida') === 'true';
+      const savedId = localStorage.getItem('altto_selected_bible_book_id');
+      const bList = await getBooks();
+      setAllBooks(bList);
+      if (isAlm) {
+        setUseOfficialAlmeida(true);
+        setBibleBook(null);
+      } else if (savedId) {
+        const found = bList.find(b => b.id === savedId);
+        if (found) {
+          setBibleBook(found);
+          setUseOfficialAlmeida(false);
+        } else {
+          setUseOfficialAlmeida(true);
+          setBibleBook(null);
+        }
+      }
+    };
+
+    const handleDevotionalBookSync = async () => {
+      const savedDev = localStorage.getItem('altto_devotional_book_id');
+      const bList = await getBooks();
+      setAllBooks(bList);
+      if (savedDev) {
+        const found = bList.find(b => b.id === savedDev) || null;
+        setDevotionalBook(found);
+      }
+    };
+
     window.addEventListener('altto_profile_updated', handleProfileSync);
     window.addEventListener('altto_bible_status_updated', handleBibleStatusSync);
     window.addEventListener('altto_devotional_status_updated', handleDevotionalSync);
+    window.addEventListener('altto_bible_book_changed', handleBibleBookSync);
+    window.addEventListener('altto_devotional_book_changed', handleDevotionalBookSync);
 
     return () => {
       window.removeEventListener('altto_profile_updated', handleProfileSync);
       window.removeEventListener('altto_bible_status_updated', handleBibleStatusSync);
       window.removeEventListener('altto_devotional_status_updated', handleDevotionalSync);
+      window.removeEventListener('altto_bible_book_changed', handleBibleBookSync);
+      window.removeEventListener('altto_devotional_book_changed', handleDevotionalBookSync);
     };
   }, [activeDate]);
 
@@ -519,6 +552,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         localStorage.setItem('altto_last_read_book_id', book.id);
         window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: book.id } }));
       } catch {}
+      markBookAsCurrentlyReading(book.id).catch(() => {});
       setFeaturedBook(book);
       getReadingProgress(book.id).then((prog) => {
         setFeaturedProgress(prog ? prog.percentage : book.progressPercent || 0);
@@ -555,6 +589,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       localStorage.setItem('altto_last_read_book_id', book.id);
       window.dispatchEvent(new CustomEvent('altto_last_read_book_updated', { detail: { bookId: book.id } }));
     } catch {}
+    markBookAsCurrentlyReading(book.id).catch(() => {});
     getReadingProgress(book.id).then((prog) => {
       setFeaturedProgress(prog ? prog.percentage : book.progressPercent || 0);
     });
@@ -703,7 +738,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span className="font-medium text-[#292532]">Progresso da Linha do Tempo</span>
             {timelineProgressPercent === 100 ? (
               <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 Jornada Diária Completa!
               </span>
             ) : (
@@ -862,7 +897,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 {isDevReadToday ? (
                   <Check className="w-3.5 h-3.5 stroke-[3]" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <BookMarked className="w-3.5 h-3.5" />
                 )}
               </div>
 
@@ -1064,7 +1099,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                             className="font-editorial text-sm sm:text-base md:text-lg text-[#292532] hover:text-[#77619E] cursor-pointer transition-colors block w-full max-w-full truncate overflow-hidden text-ellipsis whitespace-nowrap font-medium"
                             title={featuredBook.title}
                           >
-                            {featuredBook.title}
+                            {featuredBook.title.replace(/_/g, ' ')}
                           </h3>
                           <p
                             className="text-xs text-[#817B89] block w-full max-w-full truncate overflow-hidden text-ellipsis whitespace-nowrap mt-0.5"
